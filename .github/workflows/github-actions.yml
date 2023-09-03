@@ -1,20 +1,28 @@
 name: Blessed.rs
-on: [push]
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
 jobs:
   build:
     name: Compile binary
-    runs-on: ubuntu-latest
+    # We compile the binary natively on the CI operating system, and then copy into a docker container and expect it to run.
+    # This can cause issues (binary won't run at all) if the glibc version of the OS the compilation happens on is newer than
+    # the glibc version of the OS running inside the docker container.
+    #
+    # To be safe, the OS version here should be kept to an older version than the OS version in the Dockerfile
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
+        uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
       - name: Restore rust compilation cache
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       - name: Compile release build
         run: cargo build --release --all-features
       - name: Upload binary as artifact
@@ -22,13 +30,16 @@ jobs:
         with:
           name: blessed-rs-release-binary
           path: target/release/blessed-rs
+
   deploy_flyio:
       name: Deploy to Fly.io
       runs-on: ubuntu-latest
+      if: github.ref == 'refs/heads/main'
+      concurrency: production_environment
       needs: build
       steps:
         - name: Checkout repository
-          uses: actions/checkout@v2
+          uses: actions/checkout@v3
         - name: Download binary artifact
           uses: actions/download-artifact@v3
           with:
